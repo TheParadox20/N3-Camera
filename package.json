@@ -1,0 +1,33 @@
+{
+  "name": "n3-camera",
+  "version": "1.0.0",
+  "description": "video sreaming",
+  "main": "server.js",
+  "directories": {
+    "lib": "lib",
+    "test": "test"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node server.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/cyator/N3-Camera.git"
+  },
+  "author": "paradox",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/cyator/N3-Camera/issues"
+  },
+  "homepage": "https://github.com/cyator/N3-Camera#readme",
+  "dependencies": {
+    "fluent-ffmpeg": "^2.1.2",
+    "ws": "^8.14.2"
+  },
+  "type": "module",
+  "keywords": [
+    "streaming",
+    "video"
+  ]
+}

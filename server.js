@@ -1,20 +1,32 @@
-const dgram = require('node:dgram');
-const server = dgram.createSocket('udp4');
+import { WebSocketServer } from 'ws';
+import Ffmpeg from 'fluent-ffmpeg';
+import fs from 'fs';
 
-server.on('error', (err) => {
-	console.log(`server error:\n${err.stack}`);
-	server.close();
+let dir = `images/${((new Date()).getTime()).toString().slice(6)}`;
+if (!fs.existsSync(dir)){
+	fs.mkdirSync(dir);
+}
+
+let wss = new WebSocketServer({ port: 8080 });
+let clients = []
+let counter = 0;
+console.log("server started");
+wss.on('connection', function connection(ws) {
+	console.log("new client: ",clients.length);
+
+	clients.push(ws);
+	ws.on('message', function incoming(message) {
+		console.log('received image');
+		counter++;
+		fs.writeFile(`${dir}/${counter}.jpeg`, message, {encoding: 'binary'}, function(err) {
+			if (err) throw err;
+		});
+		clients.forEach((client) => {
+			if (client !== ws)	client.send(message);
+		});
+	});
+	ws.on('close', function close() {
+		console.log('disconnected');
+		clients = clients.filter((client) => client !== ws);
+	});
 });
-
-server.on('message', (msg, rinfo) => {
-	// console.log(`server got: ${msg} from ${rinfo.address}:${rinfo.port}`);
-	console.log(msg);
-});
-
-server.on('listening', () => {
-	const address = server.address();
-	console.log(`udp server listening ${address.address}:${address.port}`);
-});
-
-server.bind(1234);
-// Prints: server listening 0.0.0.0:41234

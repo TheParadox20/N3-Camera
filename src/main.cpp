@@ -7,11 +7,11 @@
 
 #include "camera_pins.h"
 
-const char *ssid = "onboard";
-const char *password = "987654321";
+const char *ssid = "ANDRE  .4G ";
+const char *password = "Fabian@123";
 
-const char *websockets_server_host = "192.168.0.100";
-const uint16_t websockets_server_port = 3000;
+const char *websockets_server_host = "192.168.100.9";
+const uint16_t websockets_server_port = 8080;
 
 using namespace websockets;
 WebsocketsClient client;
