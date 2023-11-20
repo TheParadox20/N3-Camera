@@ -2,6 +2,8 @@
 #include "esp_camera.h"
 #include <WiFi.h>
 #include <ArduinoWebsockets.h>
+#include "FS.h"                // SD Card ESP32
+#include "SD_MMC.h"            // SD Card ESP32
 
 #define CAMERA_MODEL_AI_THINKER
 
@@ -9,6 +11,8 @@
 
 const char *ssid = "ANDRE  .4G ";
 const char *password = "Fabian@123";
+// const char *ssid = "Galaxy";
+// const char *password = "luwa2131";
 
 const char *websockets_server_host = "192.168.100.9";
 const uint16_t websockets_server_port = 8080;
@@ -16,6 +20,8 @@ const uint16_t websockets_server_port = 8080;
 using namespace websockets;
 WebsocketsClient client;
 
+int pictureNumber = 0;
+String path = "/"+String(pictureNumber)+".jpg";
 typedef struct
 {
   size_t size;  // number of values used for filtering
@@ -97,6 +103,17 @@ static esp_err_t handleStream()
       }
       else
       {
+        //save image to SD Card
+        File file = SD_MMC.open(path.c_str(), FILE_WRITE);
+        if(!file) Serial.println("[-] Failed to open file for writing");
+        else
+        {
+          file.write(fb->buf, fb->len);
+          file.close();
+          pictureNumber++;
+          path = "/"+String(pictureNumber)+".jpg";
+        }
+        //end save image to SD Card
         _jpg_buf_len = fb->len;
         _jpg_buf = fb->buf;
       }
@@ -183,11 +200,6 @@ void setup()
     config.fb_count = 1;
   }
 
-#if defined(CAMERA_MODEL_ESP_EYE)
-  pinMode(13, INPUT_PULLUP);
-  pinMode(14, INPUT_PULLUP);
-#endif
-
   // camera init
   esp_err_t err = esp_camera_init(&config);
   if (err != ESP_OK)
@@ -223,7 +235,14 @@ void setup()
     Serial.print(".");
   }
 
-  Serial.println("Websocket Connected!");
+  Serial.println("[+] Websocket Connected!");
+
+  if(!SD_MMC.begin("/sdcard", true))  Serial.println("[-] SD Card Mount Failed");
+  else Serial.println("[+] SD Card Mount Success");
+  
+  uint8_t cardType = SD_MMC.cardType();
+  if(cardType == CARD_NONE)  Serial.println("[-] No SD Card attached");
+  else Serial.println("[+] Found SD Card attached");
 
   startStream();
 }
@@ -231,5 +250,5 @@ void setup()
 void loop()
 {
   // put your main code here, to run repeatedly:
-  delay(10000);
+  // delay(10000);
 }

@@ -1,5 +1,4 @@
 import { WebSocketServer } from 'ws';
-import Ffmpeg from 'fluent-ffmpeg';
 import fs from 'fs';
 
 let dir = `images/${((new Date()).getTime()).toString().slice(6)}`;
@@ -18,7 +17,7 @@ wss.on('connection', function connection(ws) {
 	ws.on('message', function incoming(message) {
 		console.log('received image');
 		counter++;
-		fs.writeFile(`${dir}/${counter}.jpeg`, message, {encoding: 'binary'}, function(err) {
+		fs.writeFile(`${dir}/${counter}.jpg`, message, {encoding: 'binary'}, function(err) {
 			if (err) throw err;
 		});
 		clients.forEach((client) => {
