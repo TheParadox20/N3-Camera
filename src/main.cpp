@@ -2,17 +2,25 @@
 #include "esp_camera.h"
 #include <WiFi.h>
 #include <ArduinoWebsockets.h>
-#include "FS.h"                // SD Card ESP32
-#include "SD_MMC.h"            // SD Card ESP32
+#include "FS.h"     // SD Card ESP32
+#include "SD_MMC.h" // SD Card ESP32
 
 #define CAMERA_MODEL_AI_THINKER
 
 #include "camera_pins.h"
 
+static uint16_t image_queue_length = 100;
+int pictureNumber = 0;
+String path = "/" + String(pictureNumber) + ".jpg";
+
+QueueHandle_t imageQueue;
+
+TaskHandle_t saveImageToSDCardTaskHandle = NULL;
+TaskHandle_t streamImagesTaskHandle = NULL;
+TaskHandle_t captureImagesTaskHandle = NULL;
+
 const char *ssid = "ANDRE  .4G ";
 const char *password = "Fabian@123";
-// const char *ssid = "Galaxy";
-// const char *password = "luwa2131";
 
 const char *websockets_server_host = "192.168.100.9";
 const uint16_t websockets_server_port = 8080;
@@ -20,8 +28,6 @@ const uint16_t websockets_server_port = 8080;
 using namespace websockets;
 WebsocketsClient client;
 
-int pictureNumber = 0;
-String path = "/"+String(pictureNumber)+".jpg";
 typedef struct
 {
   size_t size;  // number of values used for filtering
@@ -66,62 +72,91 @@ static int ra_filter_run(ra_filter_t *filter, int value)
   return filter->sum / filter->count;
 }
 
-static esp_err_t handleStream()
+camera_fb_t *captureImage()
 {
   camera_fb_t *fb = NULL;
-  esp_err_t res = ESP_OK;
-  size_t _jpg_buf_len = 0;
-  uint8_t *_jpg_buf = NULL;
-
-  static int64_t last_frame = 0;
-  if (!last_frame)
+  fb = esp_camera_fb_get();
+  if (!fb)
   {
-    last_frame = esp_timer_get_time();
+    Serial.println("Camera capture failed");
   }
+  return fb;
+}
+
+void captureImages(void *parameter)
+{
+  static int droppedImagePackets = 0;
+  camera_fb_t *fb = NULL;
+  while (true)
+  {
+
+    fb = captureImage();
+
+    if (xQueueSend(imageQueue, &fb, portMAX_DELAY) != pdTRUE)
+    {
+      droppedImagePackets++;
+    }
+
+    Serial.println("Dropped Images" + droppedImagePackets);
+
+    // yield to other task
+    vTaskDelay(20 / portTICK_PERIOD_MS);
+  }
+}
+
+void saveImageToSDCard(void *parameter)
+{
+  camera_fb_t *fb = NULL;
 
   while (true)
   {
-    fb = esp_camera_fb_get();
-    if (!fb)
+
+    if (xQueueReceive(imageQueue, &fb, portMAX_DELAY) == pdTRUE)
     {
-      Serial.println("Camera capture failed");
-      res = ESP_FAIL;
+      Serial.println("Image received");
     }
     else
     {
+      Serial.println("Failed to receive image");
+    }
 
-      if (fb->format != PIXFORMAT_JPEG)
-      {
-        bool jpeg_converted = frame2jpg(fb, 80, &_jpg_buf, &_jpg_buf_len);
-        esp_camera_fb_return(fb);
-        fb = NULL;
-        if (!jpeg_converted)
-        {
-          Serial.println("JPEG compression failed");
-          res = ESP_FAIL;
-        }
-      }
-      else
-      {
-        //save image to SD Card
-        File file = SD_MMC.open(path.c_str(), FILE_WRITE);
-        if(!file) Serial.println("[-] Failed to open file for writing");
-        else
-        {
-          file.write(fb->buf, fb->len);
-          file.close();
-          pictureNumber++;
-          path = "/"+String(pictureNumber)+".jpg";
-        }
-        //end save image to SD Card
-        _jpg_buf_len = fb->len;
-        _jpg_buf = fb->buf;
-      }
-    }
-    if (res == ESP_OK)
+    // save image to SD Card
+    File file = SD_MMC.open("/test.jpg", FILE_WRITE);
+    if (!file)
+      Serial.println("[-] Failed to open file for writing");
+    else
     {
-      client.sendBinary((const char *)_jpg_buf, _jpg_buf_len);
+      file.write(fb->buf, fb->len);
+      file.close();
+      pictureNumber++;
+      path = "/" + String(pictureNumber) + ".jpg";
     }
+    // end save image to SD Card
+
+    // yield to other task
+    vTaskDelay(50 / portTICK_PERIOD_MS);
+  }
+}
+
+void streamImages(void *parameter)
+{
+  size_t _jpg_buf_len = 0;
+  uint8_t *_jpg_buf = NULL;
+  camera_fb_t *fb = NULL;
+  while (true)
+  {
+    if (xQueueReceive(imageQueue, &fb, portMAX_DELAY) == pdTRUE)
+    {
+      Serial.println("Image received");
+    }
+    else
+    {
+      Serial.println("Failed to receive image");
+    }
+
+    _jpg_buf_len = fb->len;
+    _jpg_buf = fb->buf;
+    client.sendBinary((const char *)_jpg_buf, _jpg_buf_len);
 
     if (fb)
     {
@@ -134,37 +169,14 @@ static esp_err_t handleStream()
       free(_jpg_buf);
       _jpg_buf = NULL;
     }
-    if (res != ESP_OK)
-    {
-      break;
-    }
-    int64_t fr_end = esp_timer_get_time();
 
-    int64_t frame_time = fr_end - last_frame;
-    last_frame = fr_end;
-    frame_time /= 1000;
-    uint32_t avg_frame_time = ra_filter_run(&ra_filter, frame_time);
-    Serial.printf("MJPG: %uB %ums (%.1ffps), AVG: %ums (%.1ffps)\n",
-                  (uint32_t)(_jpg_buf_len),
-                  (uint32_t)frame_time, 1000.0 / (uint32_t)frame_time,
-                  avg_frame_time, 1000.0 / avg_frame_time);
+    // yield to other task
+    vTaskDelay(50 / portTICK_PERIOD_MS);
   }
-  last_frame = 0;
-  return res;
 }
 
-void startStream()
+void init_camera()
 {
-  ra_filter_init(&ra_filter, 20);
-  handleStream();
-}
-
-void setup()
-{
-  Serial.begin(115200);
-  Serial.setDebugOutput(true);
-  Serial.println();
-
   camera_config_t config;
   config.ledc_channel = LEDC_CHANNEL_0;
   config.ledc_timer = LEDC_TIMER_0;
@@ -180,8 +192,8 @@ void setup()
   config.pin_pclk = PCLK_GPIO_NUM;
   config.pin_vsync = VSYNC_GPIO_NUM;
   config.pin_href = HREF_GPIO_NUM;
-  config.pin_sscb_sda = SIOD_GPIO_NUM;
-  config.pin_sscb_scl = SIOC_GPIO_NUM;
+  config.pin_sccb_sda = SIOD_GPIO_NUM;
+  config.pin_sccb_scl = SIOC_GPIO_NUM;
   config.pin_pwdn = PWDN_GPIO_NUM;
   config.pin_reset = RESET_GPIO_NUM;
   config.xclk_freq_hz = 20000000;
@@ -217,6 +229,10 @@ void setup()
   }
   // drop down frame size for higher initial frame rate
   s->set_framesize(s, FRAMESIZE_QVGA);
+}
+
+void init_wifi()
+{
   WiFi.begin(ssid, password);
   Serial.println("ssid: ");
   Serial.println(ssid);
@@ -236,19 +252,47 @@ void setup()
   }
 
   Serial.println("[+] Websocket Connected!");
+}
 
-  if(!SD_MMC.begin("/sdcard", true))  Serial.println("[-] SD Card Mount Failed");
-  else Serial.println("[+] SD Card Mount Success");
-  
+void init_sd_card()
+{
+  if (!SD_MMC.begin("/sdcard", true))
+    Serial.println("[-] SD Card Mount Failed");
+  else
+    Serial.println("[+] SD Card Mount Success");
+
   uint8_t cardType = SD_MMC.cardType();
-  if(cardType == CARD_NONE)  Serial.println("[-] No SD Card attached");
-  else Serial.println("[+] Found SD Card attached");
+  if (cardType == CARD_NONE)
+    Serial.println("[-] No SD Card attached");
+  else
+    Serial.println("[+] Found SD Card attached");
+}
 
-  startStream();
+void setup()
+{
+  Serial.begin(115200);
+  Serial.setDebugOutput(true);
+  Serial.println();
+
+  init_camera();
+
+  init_wifi();
+
+  init_sd_card();
+
+  // Create the queue
+  imageQueue = xQueueCreate(10, sizeof(camera_fb_t));
+
+  ra_filter_init(&ra_filter, 20);
+
+  // Create the tasks
+  xTaskCreatePinnedToCore(saveImageToSDCard, "SaveImage", 10000, NULL, 1, &saveImageToSDCardTaskHandle, 1);
+  xTaskCreatePinnedToCore(streamImages, "StreamImage", 10000, NULL, 1, &streamImagesTaskHandle, 1);
+  xTaskCreatePinnedToCore(captureImages, "CaptureImage", 10000, NULL, 2, &captureImagesTaskHandle, 0);
+
+  vTaskDelete(NULL);
 }
 
 void loop()
 {
-  // put your main code here, to run repeatedly:
-  // delay(10000);
 }
