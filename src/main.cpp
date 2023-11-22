@@ -9,20 +9,23 @@
 
 #include "camera_pins.h"
 
-static uint16_t image_queue_length = 100;
+static uint16_t stream_image_queue_length = 100;
+static uint16_t store_image_queue_length = 100;
+
 int pictureNumber = 0;
 String path = "/" + String(pictureNumber) + ".jpg";
 
-QueueHandle_t imageQueue;
+QueueHandle_t streamImageQueue;
+QueueHandle_t storeImageQueue;
 
 TaskHandle_t saveImageToSDCardTaskHandle = NULL;
 TaskHandle_t streamImagesTaskHandle = NULL;
 TaskHandle_t captureImagesTaskHandle = NULL;
 
-const char *ssid = "ANDRE  .4G ";
-const char *password = "Fabian@123";
+const char *ssid = "Enter your SSID here";
+const char *password = "Enter your password here";
 
-const char *websockets_server_host = "192.168.100.9";
+const char *websockets_server_host = "Enter your IP address here";
 const uint16_t websockets_server_port = 8080;
 
 using namespace websockets;
@@ -92,7 +95,7 @@ void captureImages(void *parameter)
 
     fb = captureImage();
 
-    if (xQueueSend(imageQueue, &fb, portMAX_DELAY) != pdTRUE)
+    if (xQueueSend(streamImageQueue, &fb, portMAX_DELAY) != pdTRUE || xQueueSend(storeImageQueue, &fb, portMAX_DELAY) != pdTRUE)
     {
       droppedImagePackets++;
     }
@@ -111,9 +114,9 @@ void saveImageToSDCard(void *parameter)
   while (true)
   {
 
-    if (xQueueReceive(imageQueue, &fb, portMAX_DELAY) == pdTRUE)
+    if (xQueueReceive(storeImageQueue, &fb, portMAX_DELAY) == pdTRUE)
     {
-      Serial.println("Image received");
+      Serial.println("Image received for SD card storage");
     }
     else
     {
@@ -145,9 +148,9 @@ void streamImages(void *parameter)
   camera_fb_t *fb = NULL;
   while (true)
   {
-    if (xQueueReceive(imageQueue, &fb, portMAX_DELAY) == pdTRUE)
+    if (xQueueReceive(streamImageQueue, &fb, portMAX_DELAY) == pdTRUE)
     {
-      Serial.println("Image received");
+      Serial.println("Image received for streaming ");
     }
     else
     {
@@ -281,7 +284,8 @@ void setup()
   init_sd_card();
 
   // Create the queue
-  imageQueue = xQueueCreate(10, sizeof(camera_fb_t));
+  streamImageQueue = xQueueCreate(10, sizeof(camera_fb_t));
+  storeImageQueue = xQueueCreate(10, sizeof(camera_fb_t));
 
   ra_filter_init(&ra_filter, 20);
 
