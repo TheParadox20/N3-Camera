@@ -22,10 +22,10 @@ TaskHandle_t saveImageToSDCardTaskHandle = NULL;
 TaskHandle_t streamImagesTaskHandle = NULL;
 TaskHandle_t captureImagesTaskHandle = NULL;
 
-const char *ssid = "Galaxy";
-const char *password = "4321,dcba";
+const char *ssid = "Enter your SSID here";
+const char *password = "Enter your password here";
 
-const char *websockets_server_host = "192.168.93.161";
+const char *websockets_server_host = "Enter your websockets server host here";
 const uint16_t websockets_server_port = 8080;
 
 using namespace websockets;
