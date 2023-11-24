@@ -25,7 +25,7 @@ TaskHandle_t captureImagesTaskHandle = NULL;
 const char *ssid = "Enter your SSID here";
 const char *password = "Enter your password here";
 
-const char *websockets_server_host = "Enter your IP address here";
+const char *websockets_server_host = "Enter your websockets server host here";
 const uint16_t websockets_server_port = 8080;
 
 using namespace websockets;
@@ -290,9 +290,9 @@ void setup()
   ra_filter_init(&ra_filter, 20);
 
   // Create the tasks
-  xTaskCreatePinnedToCore(saveImageToSDCard, "SaveImage", 10000, NULL, 1, &saveImageToSDCardTaskHandle, 1);
+  xTaskCreatePinnedToCore(saveImageToSDCard, "SaveImage", 10000, NULL, 1, &saveImageToSDCardTaskHandle, 0);
   xTaskCreatePinnedToCore(streamImages, "StreamImage", 10000, NULL, 1, &streamImagesTaskHandle, 1);
-  xTaskCreatePinnedToCore(captureImages, "CaptureImage", 10000, NULL, 2, &captureImagesTaskHandle, 0);
+  xTaskCreatePinnedToCore(captureImages, "CaptureImage", 10000, NULL, 2, &captureImagesTaskHandle, 1);
 
   vTaskDelete(NULL);
 }
